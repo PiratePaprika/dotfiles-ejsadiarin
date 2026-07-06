@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Quick agent count for tmux status bar
+# Returns: "●2 ○1" format (working count + idle count)
+
+AGENT_PATTERNS="opencode|claude|claude-cli|codex|aider|aichat|sgpt"
+
+working=0
+idle=0
+
+while IFS='|' read -r pid cmd; do
+    # Find actual agent child processes under this pane
+    agent_pids=$(pgrep -P "$pid" -f "$AGENT_PATTERNS" 2>/dev/null || true)
+
+    # Also check if pane command itself matches
+    if [[ -z "$agent_pids" ]] && echo "$cmd" | grep -qi "$AGENT_PATTERNS"; then
+        agent_pids="$pid"
+    fi
+
+    if [[ -n "$agent_pids" ]]; then
+        found_working=false
+        while IFS= read -r apid; do
+            st=$(ps -o stat= -p "$apid" 2>/dev/null | tr -d ' ' || true)
+            if echo "$st" | grep -q "R"; then
+                found_working=true
+                break
+            fi
+        done <<< "$agent_pids"
+        if $found_working; then
+            working=$((working + 1))
+        else
+            idle=$((idle + 1))
+        fi
+    fi
+done < <(tmux list-panes -a -F '#{pane_pid}|#{pane_current_command}' 2>/dev/null)
+
+if [[ $((working + idle)) -eq 0 ]]; then
+    echo ""
+else
+    printf "●%d ○%d" "$working" "$idle"
+fi

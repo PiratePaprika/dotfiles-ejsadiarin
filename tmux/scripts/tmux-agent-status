@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# tmux-agent-status - List all AI agent panes across sessions with status
+# Usage: tmux-agent-status [--select]  (--select opens fzf to jump to a pane)
+
+AGENT_RE="opencode|claude|claude-cli|codex|aider|aichat|sgpt"
+
+main() {
+    local select_mode=false
+    [[ "${1:-}" == "--select" ]] && select_mode=true
+
+    local current_session=""
+    $select_mode && current_session=$(tmux display-message -p '#S' 2>/dev/null || true)
+
+    # Get all tmux panes in one call
+    local panes
+    panes=$(tmux list-panes -a -F '#{session_name}|#{window_index}|#{pane_index}|#{pane_pid}|#{pane_current_command}' 2>/dev/null)
+
+    if [[ -z "$panes" ]]; then
+        echo "no agents"; return
+    fi
+
+    # Collect all pane PIDs and check children in a single ps pass
+    # ps -eo pid,ppid,comm,args gives everything we need in one fork
+    local all_ps
+    all_ps=$(ps -eo pid=,ppid=,comm=,args= 2>/dev/null)
+
+    local results=""
+    while IFS='|' read -r session window pane pid cmd; do
+        # Find agent children of this pane PID from the pre-fetched ps output
+        local agent_pid="" agent_name="" status="done"
+
+        local children
+        children=$(echo "$all_ps" | awk -v ppid="$pid" '$2 == ppid {print $1}')
+
+        while IFS= read -r cpid; do
+            [[ -z "$cpid" ]] && continue
+            local cargs
+            cargs=$(echo "$all_ps" | awk -v id="$cpid" '$1 == id {$1=$2=""; print}' | sed 's/^ *//')
+            if echo "$cargs" | grep -qiE "$AGENT_RE"; then
+                agent_pid=$cpid
+                agent_name=$(echo "$all_ps" | awk -v id="$cpid" '$1 == id {print $3}')
+                local st
+                st=$(ps -o stat= -p "$cpid" 2>/dev/null | tr -d ' ' || true)
+                if echo "$st" | grep -q "R"; then
+                    status="working"
+                else
+                    status="idle"
+                fi
+                break
+            fi
+        done <<< "$children"
+
+        # Fallback: pane command itself
+        if [[ -z "$agent_pid" ]] && echo "$cmd" | grep -qiE "$AGENT_RE"; then
+            agent_name="$cmd"
+            local st
+            st=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+            if echo "$st" | grep -q "R"; then
+                status="working"
+            else
+                status="idle"
+            fi
+        fi
+
+        [[ -z "$agent_name" ]] && continue
+
+        local icon="◦"
+        [[ "$status" == "working" ]] && icon="●"
+        [[ "$status" == "idle" ]] && icon="○"
+
+        results+="${session}:${window}.${pane}|${agent_name}|${status}|${icon}|${pid}"$'\n'
+    done <<< "$panes"
+
+    if [[ -z "$results" ]]; then
+        if $select_mode; then
+            echo "No agent panes found"
+            sleep 1
+        else
+            echo "no agents"
+        fi
+        return
+    fi
+
+    if $select_mode; then
+        local sorted
+        sorted=$(echo "$results" | grep -v '^$' | awk -v cs="$current_session" '{
+            split($1, a, ":")
+            key = (a[1] == cs) ? "0" : "1"
+            print key " " $0
+        }' | sort -s -k1,1 | cut -d' ' -f2-)
+
+        local selected
+        selected=$(echo "$sorted" | while IFS='|' read -r target agent_name status icon pid; do
+            printf "%s %s %-12s %s\n" "$icon" "$target" "$agent_name" "$status"
+        done | fzf --tmux --prompt="agents > " --with-nth=1..3)
+
+        if [[ -n "$selected" ]]; then
+            local target
+            target=$(echo "$selected" | awk '{print $2}')
+            tmux switch-client -t "$target" 2>/dev/null || tmux select-pane -t "$target" 2>/dev/null || true
+        fi
+    else
+        echo "$results" | grep -v '^$' | while IFS='|' read -r target agent_name status icon pid; do
+            printf "%s %-16s %-12s %s\n" "$icon" "$target" "$agent_name" "$status"
+        done
+    fi
+}
+
+main "$@"
