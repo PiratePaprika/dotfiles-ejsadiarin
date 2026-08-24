@@ -80,11 +80,18 @@ if [[ -d "$HOME/.cargo/bin" ]]; then
     export PATH="$PATH:$HOME/.cargo/bin"
 fi
 
-# nvm
+# nvm (lazy-load)
 if [[ -d "$HOME/.nvm" || -d "$XDG_CONFIG_HOME/nvm" ]]; then
     export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
-    alias nvm="unalias nvm; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; nvm $@" # fix perf issue
+    _lazy_load_nvm() {
+        unset -f nvm node npm npx corepack 2>/dev/null
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    }
+    nvm() { _lazy_load_nvm; nvm "$@"; }
+    node() { _lazy_load_nvm; node "$@"; }
+    npm() { _lazy_load_nvm; npm "$@"; }
+    npx() { _lazy_load_nvm; npx "$@"; }
+    corepack() { _lazy_load_nvm; corepack "$@"; }
 fi
 
 # pnpm
@@ -231,7 +238,6 @@ function dir_icon {
     fi
 }
 
-SSH_TTY=$(env | grep SSH_TTY)
 if [ -n "$SSH_TTY" ]; then
     echo "[LOG: is on SSH_TTY...]"
     PS1='%B%F{#fcffb8}:%f%b%B%F{green}$(whoami)@$(hostname) %f%b%B%F{red}%~%f%b${vcs_info_msg_0_} %(?.%B%F{#a2e57b}.%F{red})\$ %f%b'
@@ -351,11 +357,10 @@ fi
 
 # ctrl+r for fzf reverse search
 if [ -f "/usr/bin/fzf" ]; then
-    if [ "$SHELL" = "/usr/bin/zsh" ] || [ "$SHELL" = "/bin/zsh" ]; then
-        eval $(fzf --zsh)
-    elif [ "$SHELL" = "/usr/bin/bash" ] || [ "$SHELL" = "/bin/bash" ]; then
-        eval $(fzf --bash)
-        # command -v eval $(fzf --bash) >/dev/null 2>&1
+    if [ -f "/usr/share/fzf/shell/key-bindings.zsh" ]; then
+        source /usr/share/fzf/shell/key-bindings.zsh
+    elif [ -f "$XDG_CONFIG_HOME/fzf/shell/key-bindings.zsh" ]; then
+        source "$XDG_CONFIG_HOME/fzf/shell/key-bindings.zsh"
     fi
 fi
 
@@ -430,10 +435,11 @@ if [[ -f "/usr/local/bin/kubectl" || -f "/usr/bin/kubectl" || -f "/usr/local/bin
 fi
 
 
-# docker completions
-
-if [[ -f "/usr/bin/docker" || -f "/usr/local/bin/docker" ]]; then
-    source <(docker completion zsh)
+# docker completions (use static file if available, avoid subprocess)
+if [[ -f "/usr/share/zsh/site-functions/_docker" ]]; then
+    fpath=(/usr/share/zsh/site-functions $fpath)
+elif [[ -f "/usr/local/share/zsh/site-functions/_docker" ]]; then
+    fpath=(/usr/local/share/zsh/site-functions $fpath)
 fi
 
 # k3s completions
@@ -463,10 +469,15 @@ compdef _cli_zsh_autocomplete k3s
 ##############################
 #      DATA ENGINEERING      #
 ##############################
-# uv
+# uv (lazy-load completions)
 if [[ -f "/usr/bin/uv" ]]; then
-    eval "$(uv generate-shell-completion zsh)"
-    eval "$(uvx --generate-shell-completion zsh)"
+    _lazy_load_uv() {
+        unset -f uv uvx 2>/dev/null
+        eval "$(uv generate-shell-completion zsh)"
+        eval "$(uvx --generate-shell-completion zsh)"
+    }
+    uv() { _lazy_load_uv; uv "$@"; }
+    uvx() { _lazy_load_uv; uvx "$@"; }
 fi
 
 ##############################
@@ -474,7 +485,16 @@ fi
 ##############################
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
 export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+# Lazy-load sdkman init
+_lazy_load_sdkman() {
+    unset -f sdk java gradle maven 2>/dev/null
+    [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+}
+sdk() { _lazy_load_sdkman; sdk "$@"; }
+java() { _lazy_load_sdkman; java "$@"; }
+gradle() { _lazy_load_sdkman; gradle "$@"; }
+maven() { _lazy_load_sdkman; mvn "$@"; }
+# Pre-set JAVA_HOME so PATH works without sdkman init
 export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
 export PATH="$JAVA_HOME/bin:$PATH"
 
@@ -540,7 +560,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 #
 # ufw
 # - ufw allow 22/tcp 22/udp 80/tcp 80/udp 443/tcp 443/udp
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# nvm bash_completion is loaded when nvm is lazy-loaded
 
 # bun completions
 [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
@@ -552,21 +572,13 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # OPENSPEC:START
 # OpenSpec shell completions configuration
 fpath=("$HOME/.zsh/completions" $fpath)
-autoload -Uz compinit
-compinit
 # OPENSPEC:END
 
 # TODO: add if on work-wsl (work machine)
 # export NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ca-certificates.crt"
 # export REQUESTS_CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
 # export SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
-# # nvm (managed by ansible) START ANSIBLE MANAGED BLOCK
-if [[ -d "$HOME/.nvm" || -d "$XDG_CONFIG_HOME/nvm" ]]; then
-    export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
-    alias nvm="unalias nvm; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; nvm $@" # fix perf issue
-fi
-# # nvm (managed by ansible) END ANSIBLE MANAGED BLOCK
+# nvm is already loaded above (line ~84)
 
 # opencode
 export PATH=/home/ejs/.opencode/bin:$PATH
