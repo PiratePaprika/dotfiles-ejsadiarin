@@ -1,0 +1,31 @@
+#!/bin/sh
+
+TARGET="$1"
+
+if [ -z "$TARGET" ]; then
+    tmux display-message "No target specified."
+    exit 1
+fi
+
+# If the input is just digits, prepend a colon so tmux targets the window index
+if echo "$TARGET" | grep -q '^[0-9][0-9]*$'; then
+    TARGET=":$TARGET"
+fi
+
+# Grab the dimensions of the active pane in the target window
+target_height=$(tmux display-message -p -t "$TARGET" '#{pane_height}' 2>/dev/null)
+target_width=$(tmux display-message -p -t "$TARGET" '#{pane_width}' 2>/dev/null)
+
+if [ -z "$target_width" ] || [ -z "$target_height" ]; then
+    tmux display-message "Target window '$TARGET' not found."
+    exit 1
+fi
+
+# Apply BSPWM dimension logic (like the split script)
+target_height=$(expr "$target_height" \* 3)
+
+if [ "$target_width" -gt "$target_height" ]; then
+    tmux join-pane -h -t "$TARGET"
+else
+    tmux join-pane -v -t "$TARGET"
+fi
