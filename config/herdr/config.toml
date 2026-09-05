@@ -1,0 +1,80 @@
+onboarding = false
+
+[theme]
+name = "catppuccin"
+
+[terminal]
+
+[keys]
+# Use ctrl+space as prefix (avoids conflict with ctrl+b tmux default)
+prefix = "ctrl+space"
+
+# Vim-like pane navigation (prefix + h/j/k/l)
+focus_pane_left = "prefix+h"
+focus_pane_down = "prefix+j"
+focus_pane_up = "prefix+k"
+focus_pane_right = "prefix+l"
+
+# Pane management
+split_vertical = "prefix+v"
+split_horizontal = "prefix+s"
+close_pane = "prefix+x"
+zoom = "prefix+z"
+resize_mode = "prefix+r"
+rename_pane = "prefix+shift+p"
+
+# Swap panes (capital = shift)
+swap_pane_left = "prefix+shift+h"
+swap_pane_down = "prefix+shift+j"
+swap_pane_up = "prefix+shift+k"
+swap_pane_right = "prefix+shift+l"
+
+# Tab management
+new_tab = "prefix+c"
+close_tab = "prefix+shift+x"
+rename_tab = "prefix+shift+t"
+previous_tab = "prefix+,"
+next_tab = "prefix+."
+switch_tab = "prefix+1..9"
+
+# Workspace management
+new_workspace = "prefix+n"
+close_workspace = "prefix+shift+d"
+rename_workspace = "prefix+shift+w"
+goto = "prefix+g"
+workspace_picker = "prefix+w"
+previous_workspace = "prefix+shift+left"
+next_workspace = "prefix+shift+right"
+
+# Sidebar and UI
+toggle_sidebar = "prefix+b"
+copy_mode = "prefix+["
+
+# Misc
+detach = "prefix+q"
+reload_config = "prefix+shift+r"
+
+# Navigate-mode movement (plain keys, win while navigate mode is open)
+navigate_pane_left = "h"
+navigate_pane_down = "j"
+navigate_pane_up = "k"
+navigate_pane_right = "l"
+navigate_workspace_up = "up"
+navigate_workspace_down = "down"
+
+[ui]
+show_agent_labels_on_pane_borders = true
+prompt_new_tab_name = false
+
+[ui.toast]
+delivery = "herdr"
+
+[ui.sound]
+enabled = false
+
+[session]
+
+[experimental]
+pane_history = true
+
+[advanced]
